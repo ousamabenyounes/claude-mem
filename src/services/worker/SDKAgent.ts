@@ -14,7 +14,7 @@ import path from 'path';
 import { DatabaseManager } from './DatabaseManager.js';
 import { SessionManager } from './SessionManager.js';
 import { logger } from '../../utils/logger.js';
-import { buildInitPrompt, buildObservationPrompt, buildSummaryPrompt, buildContinuationPrompt } from '../../sdk/prompts.js';
+import { buildObservationPrompt, buildSummaryPrompt, buildSystemPrompt, buildInitUserMessage, buildContinuationUserMessage } from '../../sdk/prompts.js';
 import { SettingsDefaultsManager } from '../../shared/SettingsDefaultsManager.js';
 import { USER_SETTINGS_PATH, OBSERVER_SESSIONS_DIR, ensureDir } from '../../shared/paths.js';
 import { buildIsolatedEnv, getAuthMethodDescription } from '../../shared/EnvManager.js';
@@ -123,6 +123,13 @@ export class SDKAgent {
       }
     }
 
+    // Issue #1891: Build system prompt from static mode instructions.
+    // This moves cacheable mode instructions out of user messages and into
+    // the SDK's systemPrompt option, enabling prompt caching and reducing
+    // per-turn token usage.
+    const mode = ModeManager.getInstance().getActiveMode();
+    const systemPrompt = buildSystemPrompt(mode);
+
     // Run Agent SDK query loop
     // Only resume if we have a captured memory session ID
     // Use custom spawn to capture PIDs for zombie process cleanup (Issue #737)
@@ -133,6 +140,8 @@ export class SDKAgent {
       prompt: messageGenerator,
       options: {
         model: modelId,
+        // Issue #1891: Static mode instructions in system prompt for cacheability
+        systemPrompt,
         // Isolate observer sessions - they'll appear under project "observer-sessions"
         // instead of polluting user's actual project resume lists
         cwd: OBSERVER_SESSIONS_DIR,
@@ -303,13 +312,13 @@ export class SDKAgent {
    * ====================================
    * This is where NEW hook's dual-purpose nature comes together:
    *
-   * - Prompt #1 (lastPromptNumber === 1): buildInitPrompt
-   *   - Full initialization prompt with instructions
-   *   - Sets up the SDK agent's context
+   * - Prompt #1 (lastPromptNumber === 1): buildInitUserMessage
+   *   - Lean user message with just the user request and session header
+   *   - Static mode instructions are in the system prompt (Issue #1891)
    *
-   * - Prompt #2+ (lastPromptNumber > 1): buildContinuationPrompt
-   *   - Continuation prompt for same session
-   *   - Includes session context and prompt number
+   * - Prompt #2+ (lastPromptNumber > 1): buildContinuationUserMessage
+   *   - Lean continuation message with greeting, user request, and header
+   *   - Static mode instructions are in the system prompt (Issue #1891)
    *
    * BOTH prompts receive session.contentSessionId:
    * - This comes from the hook's session_id (see new-hook.ts)
@@ -323,7 +332,7 @@ export class SDKAgent {
    *
    * SHARED CONVERSATION HISTORY:
    * - Each user message is added to session.conversationHistory
-   * - This allows provider switching (Claude→Gemini) with full context
+   * - This allows provider switching (Claude->Gemini) with full context
    * - SDK manages its own internal state, but we mirror it for interop
    *
    * CWD TRACKING:
@@ -348,9 +357,11 @@ export class SDKAgent {
       promptType: isInitPrompt ? 'INIT' : 'CONTINUATION'
     });
 
+    // Issue #1891: Use lean user messages that exclude static mode instructions.
+    // Static instructions are now in the system prompt (see startSession).
     const initPrompt = isInitPrompt
-      ? buildInitPrompt(session.project, session.contentSessionId, session.userPrompt, mode)
-      : buildContinuationPrompt(session.userPrompt, session.lastPromptNumber, session.contentSessionId, mode);
+      ? buildInitUserMessage(session.userPrompt, mode)
+      : buildContinuationUserMessage(session.userPrompt, mode);
 
     // Add to shared conversation history for provider interop
     session.conversationHistory.push({ role: 'user', content: initPrompt });
