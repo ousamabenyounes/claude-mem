@@ -170,6 +170,9 @@ export class WorkerService {
   // Stale session reaper interval (Issue #1168)
   private staleSessionReaperInterval: ReturnType<typeof setInterval> | null = null;
 
+  // WAL checkpoint interval (Issue #1956)
+  private walCheckpointInterval: ReturnType<typeof setInterval> | null = null;
+
   // AI interaction tracking for health endpoint
   private lastAiInteraction: {
     timestamp: number;
@@ -507,6 +510,15 @@ export class WorkerService {
           logger.error('SYSTEM', 'Stale session reaper error', { error: e instanceof Error ? e.message : String(e) });
         }
       }, 2 * 60 * 1000);
+
+      // Periodic WAL checkpoint to prevent unbounded WAL growth (Issue #1956)
+      this.walCheckpointInterval = setInterval(() => {
+        try {
+          this.dbManager.getSessionStore().checkpoint();
+        } catch (e) {
+          logger.error('SYSTEM', 'WAL checkpoint error', { error: e instanceof Error ? e.message : String(e) });
+        }
+      }, 5 * 60 * 1000);
 
       // Auto-recover orphaned queues (fire-and-forget with error logging)
       this.processPendingQueues(50).then(result => {
@@ -975,6 +987,12 @@ export class WorkerService {
     if (this.staleSessionReaperInterval) {
       clearInterval(this.staleSessionReaperInterval);
       this.staleSessionReaperInterval = null;
+    }
+
+    // Stop WAL checkpoint interval (Issue #1956)
+    if (this.walCheckpointInterval) {
+      clearInterval(this.walCheckpointInterval);
+      this.walCheckpointInterval = null;
     }
 
     await performGracefulShutdown({

@@ -10,6 +10,7 @@ import { MigrationRunner } from './migrations/runner.js';
 // SQLite configuration constants
 const SQLITE_MMAP_SIZE_BYTES = 256 * 1024 * 1024; // 256MB
 const SQLITE_CACHE_SIZE_PAGES = 10_000;
+const WAL_JOURNAL_SIZE_LIMIT_BYTES = 8 * 1024 * 1024; // 8MB
 
 export interface Migration {
   version: number;
@@ -166,6 +167,7 @@ export class ClaudeMemDatabase {
     this.db.run('PRAGMA temp_store = memory');
     this.db.run(`PRAGMA mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);
     this.db.run(`PRAGMA cache_size = ${SQLITE_CACHE_SIZE_PAGES}`);
+    this.db.run(`PRAGMA journal_size_limit = ${WAL_JOURNAL_SIZE_LIMIT_BYTES}`);
 
     // Run all migrations
     const migrationRunner = new MigrationRunner(this.db);
@@ -173,9 +175,22 @@ export class ClaudeMemDatabase {
   }
 
   /**
+   * Checkpoint the WAL file to reclaim disk space.
+   * Uses TRUNCATE mode to reset the WAL file to zero bytes after checkpoint.
+   */
+  checkpoint(): void {
+    try {
+      this.db.run('PRAGMA wal_checkpoint(TRUNCATE)');
+    } catch {
+      // Non-fatal — checkpoint failure doesn't affect correctness
+    }
+  }
+
+  /**
    * Close the database connection
    */
   close(): void {
+    this.checkpoint();
     this.db.close();
   }
 }
@@ -229,6 +244,7 @@ export class DatabaseManager {
     this.db.run('PRAGMA temp_store = memory');
     this.db.run(`PRAGMA mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);
     this.db.run(`PRAGMA cache_size = ${SQLITE_CACHE_SIZE_PAGES}`);
+    this.db.run(`PRAGMA journal_size_limit = ${WAL_JOURNAL_SIZE_LIMIT_BYTES}`);
 
     // Initialize schema_versions table
     this.initializeSchemaVersions();
@@ -264,6 +280,7 @@ export class DatabaseManager {
    */
   close(): void {
     if (this.db) {
+      try { this.db.run('PRAGMA wal_checkpoint(TRUNCATE)'); } catch { /* non-fatal */ }
       this.db.close();
       this.db = null;
       dbInstance = null;

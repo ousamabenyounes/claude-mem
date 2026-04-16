@@ -32,6 +32,7 @@ export class SessionSearch {
     }
     this.db = new Database(dbPath);
     this.db.run('PRAGMA journal_mode = WAL');
+    this.db.run('PRAGMA journal_size_limit = 8388608');
 
     // Ensure FTS tables exist
     this.ensureFTSTables();
@@ -605,6 +606,7 @@ export class SessionSearch {
    * Close the database connection
    */
   close(): void {
+    try { this.db.run('PRAGMA wal_checkpoint(TRUNCATE)'); } catch { /* non-fatal */ }
     this.db.close();
   }
 }

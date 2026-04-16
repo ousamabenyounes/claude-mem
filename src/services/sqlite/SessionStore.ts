@@ -44,6 +44,7 @@ export class SessionStore {
     this.db.run('PRAGMA journal_mode = WAL');
     this.db.run('PRAGMA synchronous = NORMAL');
     this.db.run('PRAGMA foreign_keys = ON');
+    this.db.run('PRAGMA journal_size_limit = 8388608');
 
     // Initialize schema if needed (fresh database)
     this.initializeSchema();
@@ -2439,9 +2440,21 @@ export class SessionStore {
   }
 
   /**
+   * Checkpoint the WAL file to reclaim disk space.
+   */
+  checkpoint(): void {
+    try {
+      this.db.run('PRAGMA wal_checkpoint(TRUNCATE)');
+    } catch {
+      // Non-fatal — checkpoint failure doesn't affect correctness
+    }
+  }
+
+  /**
    * Close the database connection
    */
   close(): void {
+    this.checkpoint();
     this.db.close();
   }
 
