@@ -134,6 +134,20 @@ describe('AgentFormatter', () => {
 
       expect(result[0]).toContain('session');
     });
+
+    it('should use OBS_ID to disambiguate observation IDs in format line (#1920)', () => {
+      const result = renderAgentLegend();
+
+      expect(result[1]).toContain('OBS_ID');
+      expect(result[1]).not.toMatch(/\bID\b/);
+    });
+
+    it('should use OBS_IDs in fetch instructions to disambiguate (#1920)', () => {
+      const result = renderAgentLegend();
+
+      expect(result[2]).toContain('get_observations([OBS_IDs])');
+      expect(result[2]).not.toMatch(/get_observations\(\[IDs\]\)/);
+    });
   });
 
   describe('renderAgentColumnKey', () => {
@@ -445,6 +459,14 @@ describe('AgentFormatter', () => {
 
       // 15500 / 1000 = 15.5 -> rounds to 16
       expect(joined).toContain('16k');
+    });
+
+    it('should use OBS_IDs to disambiguate observation IDs (#1920)', () => {
+      const result = renderAgentFooter(5000, 100);
+      const joined = result.join('\n');
+
+      expect(joined).toContain('get_observations([OBS_IDs])');
+      expect(joined).not.toMatch(/get_observations\(\[IDs\]\)/);
     });
   });
 

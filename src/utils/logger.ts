@@ -32,7 +32,8 @@ class Logger {
   private level: LogLevel | null = null;
   private useColor: boolean;
   private logFilePath: string | null = null;
-  private logFileInitialized: boolean = false;
+  private logsDirReady: boolean = false;
+  private currentDateStr: string | null = null;
 
   constructor() {
     // Disable colors when output is not a TTY (e.g., PM2 logs)
@@ -41,27 +42,32 @@ class Logger {
   }
 
   /**
-   * Initialize log file path and ensure directory exists (lazy initialization)
+   * Ensure logs directory exists and update the log file path if the date has changed.
+   * Recomputes the date-based filename on each call so long-running workers
+   * rotate to a new file after midnight. Retries directory creation if a
+   * previous attempt failed (transient filesystem errors).
    */
   private ensureLogFileInitialized(): void {
-    if (this.logFileInitialized) return;
-    this.logFileInitialized = true;
-
     try {
-      // Use default data directory to avoid circular dependency with SettingsDefaultsManager
-      // The log directory is always based on the default, not user settings
-      const logsDir = join(DEFAULT_DATA_DIR, 'logs');
-
-      // Ensure logs directory exists
-      if (!existsSync(logsDir)) {
-        mkdirSync(logsDir, { recursive: true });
+      // Ensure logs directory exists (retry on each call until it succeeds)
+      if (!this.logsDirReady) {
+        const logsDir = join(DEFAULT_DATA_DIR, 'logs');
+        if (!existsSync(logsDir)) {
+          mkdirSync(logsDir, { recursive: true });
+        }
+        this.logsDirReady = true;
       }
 
-      // Create log file path with date
+      // Recompute log file path when the date changes (rotate across midnight)
       const date = new Date().toISOString().split('T')[0];
-      this.logFilePath = join(logsDir, `claude-mem-${date}.log`);
+      if (date !== this.currentDateStr) {
+        this.currentDateStr = date;
+        const logsDir = join(DEFAULT_DATA_DIR, 'logs');
+        this.logFilePath = join(logsDir, `claude-mem-${date}.log`);
+      }
     } catch (error) {
       // If log file initialization fails, just log to console
+      // logsDirReady stays false so we retry on the next call
       console.error('[LOGGER] Failed to initialize log file:', error);
       this.logFilePath = null;
     }
