@@ -444,7 +444,9 @@ export class OpenRouterAgent {
 
     // API key: check settings first, then centralized claude-mem .env (NOT process.env)
     // This prevents Issue #733 where random project .env files could interfere
-    const apiKey = settings.CLAUDE_MEM_OPENROUTER_API_KEY || getCredential('OPENROUTER_API_KEY') || '';
+    // Issue #1946: Trim whitespace to prevent "Bearer  " (empty key) causing 401
+    const rawKey = settings.CLAUDE_MEM_OPENROUTER_API_KEY || getCredential('OPENROUTER_API_KEY') || '';
+    const apiKey = rawKey.trim();
 
     // Model: from settings or default
     const model = settings.CLAUDE_MEM_OPENROUTER_MODEL || 'xiaomi/mimo-v2-flash:free';
