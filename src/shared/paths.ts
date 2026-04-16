@@ -1,6 +1,6 @@
 import { join, dirname, basename, sep } from 'path';
 import { homedir } from 'os';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { SettingsDefaultsManager } from './SettingsDefaultsManager.js';
@@ -167,6 +167,48 @@ export function getPackageRoot(): string {
 export function getPackageCommandsDir(): string {
   const packageRoot = getPackageRoot();
   return join(packageRoot, 'commands');
+}
+
+/**
+ * Safely read the plugin version from the package root.
+ *
+ * Tries `package.json` first, then falls back to `.claude-plugin/plugin.json`.
+ * Returns 'unknown' when neither file is available (e.g., plugin cache installs
+ * where `package.json` is not present). Handles ENOENT and EBUSY gracefully
+ * to avoid crashes during shutdown race conditions or fresh installs (#1931).
+ */
+export function readPackageVersion(): string {
+  const packageRoot = getPackageRoot();
+
+  // Try package.json first
+  const packageJsonPath = join(packageRoot, 'package.json');
+  try {
+    if (existsSync(packageJsonPath)) {
+      const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+      if (packageJson.version) return packageJson.version;
+    }
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT' && code !== 'EBUSY') {
+      logger.debug('SYSTEM', 'Failed to read package.json version', { path: packageJsonPath, code });
+    }
+  }
+
+  // Fall back to plugin.json (always present in installed plugins)
+  const pluginJsonPath = join(packageRoot, '.claude-plugin', 'plugin.json');
+  try {
+    if (existsSync(pluginJsonPath)) {
+      const pluginJson = JSON.parse(readFileSync(pluginJsonPath, 'utf-8'));
+      if (pluginJson.version) return pluginJson.version;
+    }
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT' && code !== 'EBUSY') {
+      logger.debug('SYSTEM', 'Failed to read plugin.json version', { path: pluginJsonPath, code });
+    }
+  }
+
+  return 'unknown';
 }
 
 /**

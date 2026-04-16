@@ -7,10 +7,10 @@
 
 import express, { Request, Response } from 'express';
 import path from 'path';
-import { readFileSync, statSync, existsSync } from 'fs';
+import { statSync, existsSync } from 'fs';
 import { logger } from '../../../../utils/logger.js';
 import { homedir } from 'os';
-import { getPackageRoot } from '../../../../shared/paths.js';
+import { readPackageVersion } from '../../../../shared/paths.js';
 import { getWorkerPort } from '../../../../shared/worker-utils.js';
 import { PaginationHelper } from '../../PaginationHelper.js';
 import { DatabaseManager } from '../../DatabaseManager.js';
@@ -235,11 +235,8 @@ export class DataRoutes extends BaseRouteHandler {
   private handleGetStats = this.wrapHandler((req: Request, res: Response): void => {
     const db = this.dbManager.getSessionStore().db;
 
-    // Read version from package.json
-    const packageRoot = getPackageRoot();
-    const packageJsonPath = path.join(packageRoot, 'package.json');
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-    const version = packageJson.version;
+    // Read version safely — handles missing package.json in cache installs (#1931)
+    const version = readPackageVersion();
 
     // Get database stats
     const totalObservations = db.prepare('SELECT COUNT(*) as count FROM observations').get() as { count: number };
