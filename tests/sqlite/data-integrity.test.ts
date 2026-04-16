@@ -115,6 +115,43 @@ describe('TRIAGE-03: Data Integrity', () => {
       expect(result2.id).not.toBe(result1.id);
     });
 
+    it('deduplicates near-identical observations differing only in whitespace', () => {
+      const memId = createSessionWithMemoryId(db, 'content-dedup-ws', 'mem-dedup-ws');
+      const obs1 = createObservationInput({ title: 'Test  Title', narrative: 'Some   narrative\n\ncontent' });
+      const obs2 = createObservationInput({ title: 'Test Title', narrative: 'Some narrative\ncontent' });
+
+      const now = Date.now();
+      const result1 = storeObservation(db, memId, 'test-project', obs1, 1, 0, now);
+      const result2 = storeObservation(db, memId, 'test-project', obs2, 1, 0, now + 1000);
+
+      expect(result2.id).toBe(result1.id);
+    });
+
+    it('deduplicates observations differing only in case', () => {
+      const memId = createSessionWithMemoryId(db, 'content-dedup-case', 'mem-dedup-case');
+      const obs1 = createObservationInput({ title: 'Test Title', narrative: 'Some narrative' });
+      const obs2 = createObservationInput({ title: 'test title', narrative: 'some narrative' });
+
+      const now = Date.now();
+      const result1 = storeObservation(db, memId, 'test-project', obs1, 1, 0, now);
+      const result2 = storeObservation(db, memId, 'test-project', obs2, 1, 0, now + 1000);
+
+      expect(result2.id).toBe(result1.id);
+    });
+
+    it('deduplicates observations with unicode normalization differences', () => {
+      const memId = createSessionWithMemoryId(db, 'content-dedup-unicode', 'mem-dedup-unicode');
+      // é as composed (U+00E9) vs decomposed (e + U+0301)
+      const obs1 = createObservationInput({ title: 'caf\u00e9', narrative: 'narrative' });
+      const obs2 = createObservationInput({ title: 'cafe\u0301', narrative: 'narrative' });
+
+      const now = Date.now();
+      const result1 = storeObservation(db, memId, 'test-project', obs1, 1, 0, now);
+      const result2 = storeObservation(db, memId, 'test-project', obs2, 1, 0, now + 1000);
+
+      expect(result2.id).toBe(result1.id);
+    });
+
     it('content_hash column is populated on new observations', () => {
       const memId = createSessionWithMemoryId(db, 'content-hash-col', 'mem-hash-col');
       const obs = createObservationInput();
