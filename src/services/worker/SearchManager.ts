@@ -80,6 +80,13 @@ export class SearchManager {
       delete normalized.filePath;
     }
 
+    // Map concept (singular) → concepts (plural). The by-concept API exposes
+    // ?concept=X but internal filters/destructuring use `concepts`.
+    if (normalized.concept !== undefined && normalized.concepts === undefined) {
+      normalized.concepts = normalized.concept;
+      delete normalized.concept;
+    }
+
     // Parse comma-separated concepts into array
     if (normalized.concepts && typeof normalized.concepts === 'string') {
       normalized.concepts = normalized.concepts.split(',').map((s: string) => s.trim()).filter(Boolean);
@@ -1061,7 +1068,21 @@ export class SearchManager {
    */
   async findByConcept(args: any): Promise<any> {
     const normalized = this.normalizeParams(args);
-    const { concepts: concept, ...filters } = normalized;
+    const { concepts: rawConcept, ...filters } = normalized;
+    // Handle both string and array (normalizeParams splits comma-separated strings).
+    const concept = Array.isArray(rawConcept) ? rawConcept[0] : rawConcept;
+
+    // Guard against missing concept. Without it, SessionSearch.findByConcept would
+    // emit "WHERE \n ORDER BY ..." and hit `near "ORDER": syntax error`.
+    if (!concept || typeof concept !== 'string') {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: 'No concept provided. Pass ?concept=X to search by concept.'
+        }]
+      };
+    }
+
     let results: ObservationSearchResult[] = [];
 
     // Metadata-first, semantic-enhanced search
