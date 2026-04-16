@@ -840,6 +840,102 @@ function buildSymbols(matches: RawMatch[], lines: string[], language: string): {
   return { symbols: symbols.filter(s => !nested.has(s)), imports };
 }
 
+// --- Plain-text fallback for files without tree-sitter grammars ---
+
+/**
+ * Build a line-based summary for files that have no tree-sitter grammar.
+ * Detects section-like headers (lines that look like titles, ALL-CAPS lines,
+ * lines followed by underline-style separators) and blank-line-delimited paragraphs.
+ * Always includes at least a metadata symbol with line count so the output is never empty.
+ */
+export function buildPlainTextFallback(lines: string[], filePath: string, language: string): FoldedFile {
+  const symbols: CodeSymbol[] = [];
+
+  // Patterns that look like section headers in plain text
+  const headerPatterns: RegExp[] = [
+    /^#{1,6}\s+.+/,                    // Markdown-style headers (in case of .txt with markdown)
+    /^[A-Z][A-Z0-9 _\-]{2,}$/,        // ALL-CAPS lines (at least 3 chars)
+    /^[-=]{3,}\s*$/,                   // Underline-style separators (---, ===)
+    /^\[.+\]\s*$/,                     // [Section Name] style
+    /^[A-Z][A-Za-z0-9 ]+:\s*$/,       // "Title:" style headers
+  ];
+
+  // Track whether the previous line was a text line (for underline detection)
+  let prevLineText = "";
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trimEnd();
+
+    // Skip empty lines
+    if (line.trim() === "") {
+      prevLineText = "";
+      continue;
+    }
+
+    // Check underline separator: if current line is --- or === and previous was text,
+    // the previous line is a section header
+    if (/^[-=]{3,}\s*$/.test(line) && prevLineText.trim().length > 0) {
+      // The previous line was a header — but we may have already added it
+      // Check if we already have a symbol at the previous line
+      const alreadyAdded = symbols.some(s => s.lineStart === i - 1);
+      if (!alreadyAdded) {
+        symbols.push({
+          name: prevLineText.trim(),
+          kind: "section",
+          signature: prevLineText.trim(),
+          lineStart: i - 1,
+          lineEnd: i,
+          exported: false,
+        });
+      }
+      prevLineText = "";
+      continue;
+    }
+
+    // Check other header patterns (but skip underline pattern here — handled above)
+    for (const pattern of headerPatterns) {
+      if (pattern === headerPatterns[2]) continue; // skip underline pattern in this loop
+      if (pattern.test(line)) {
+        symbols.push({
+          name: line.trim().replace(/^#+\s*/, ""),
+          kind: "section",
+          signature: line.trim(),
+          lineStart: i,
+          lineEnd: i,
+          exported: false,
+        });
+        break;
+      }
+    }
+
+    prevLineText = line;
+  }
+
+  // Always emit at least a metadata summary so the output is never empty
+  symbols.push({
+    name: "summary",
+    kind: "metadata",
+    signature: `Plain text file, ${lines.length} lines`,
+    lineStart: 0,
+    lineEnd: Math.max(0, lines.length - 1),
+    exported: false,
+  });
+
+  const file: FoldedFile = {
+    filePath,
+    language,
+    symbols,
+    imports: [],
+    totalLines: lines.length,
+    foldedTokenEstimate: 0,
+  };
+
+  const folded = formatFoldedView(file);
+  file.foldedTokenEstimate = Math.ceil(folded.length / 4);
+
+  return file;
+}
+
 // --- Main parse functions ---
 
 export function parseFile(content: string, filePath: string, projectRoot?: string): FoldedFile {
@@ -849,10 +945,7 @@ export function parseFile(content: string, filePath: string, projectRoot?: strin
 
   const grammarPath = resolveGrammarPathWithFallback(language, projectRoot);
   if (!grammarPath) {
-    return {
-      filePath, language, symbols: [], imports: [],
-      totalLines: lines.length, foldedTokenEstimate: 50,
-    };
+    return buildPlainTextFallback(lines, filePath, language);
   }
 
   const queryKey = getUserAwareQueryKey(language, userConfig);
@@ -907,13 +1000,10 @@ export function parseFilesBatch(
   for (const [language, groupFiles] of languageGroups) {
     const grammarPath = resolveGrammarPathWithFallback(language, projectRoot);
     if (!grammarPath) {
-      // No grammar — return empty results for these files
+      // No grammar — use plain-text fallback for these files
       for (const file of groupFiles) {
         const lines = file.content.split("\n");
-        results.set(file.relativePath, {
-          filePath: file.relativePath, language, symbols: [], imports: [],
-          totalLines: lines.length, foldedTokenEstimate: 50,
-        });
+        results.set(file.relativePath, buildPlainTextFallback(lines, file.relativePath, language));
       }
       continue;
     }
