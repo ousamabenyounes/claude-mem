@@ -49,8 +49,8 @@ export function renderAgentLegend(): string[] {
 
   return [
     `Legend: 🎯session ${typeLegendItems}`,
-    `Format: ID TIME TYPE TITLE`,
-    `Fetch details: get_observations([IDs]) | Search: mem-search skill`,
+    `Format: OBS_ID TIME TYPE TITLE`,
+    `Fetch details: get_observations([OBS_IDs]) | Search: mem-search skill`,
     ''
   ];
 }
@@ -215,7 +215,7 @@ export function renderAgentFooter(totalDiscoveryTokens: number, totalReadTokens:
   const workTokensK = Math.round(totalDiscoveryTokens / 1000);
   return [
     '',
-    `Access ${workTokensK}k tokens of past work via get_observations([IDs]) or mem-search skill.`
+    `Access ${workTokensK}k tokens of past work via get_observations([OBS_IDs]) or mem-search skill.`
   ];
 }
 
