@@ -72,6 +72,9 @@ import {
 import {
   handleGeminiCliCommand
 } from './integrations/GeminiCliHooksInstaller.js';
+import {
+  handleVSCodeCopilotCommand
+} from './integrations/VSCodeCopilotInstaller.js';
 
 import { DatabaseManager } from './worker/DatabaseManager.js';
 import { SessionManager } from './worker/SessionManager.js';
@@ -1210,6 +1213,13 @@ async function main() {
       break;
     }
 
+    case 'vscode-copilot': {
+      const copilotSubcommand = process.argv[3];
+      const copilotResult = await handleVSCodeCopilotCommand(copilotSubcommand, process.argv.slice(4));
+      process.exit(copilotResult);
+      break;
+    }
+
     case 'hook': {
       // IO discipline: this case is the entry point to the hook execution path.
       // Once hookCommand is invoked, src/shared/hook-io.ts owns all
@@ -1220,7 +1230,7 @@ async function main() {
       const event = process.argv[4];
       if (!platform || !event) {
         console.error('Usage: claude-mem hook <platform> <event>');
-        console.error('Platforms: claude-code, codex, cursor, gemini-cli, raw');
+        console.error('Platforms: claude-code, codex, cursor, gemini-cli, vscode-copilot, raw');
         console.error('Events: context, session-init, observation, summarize, user-message');
         process.exit(1);
       }

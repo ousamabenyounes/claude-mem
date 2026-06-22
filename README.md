@@ -144,6 +144,14 @@ Or install for OpenCode:
 npx claude-mem install --ide opencode
 ```
 
+Or install for GitHub Copilot in VS Code (run inside your project — writes `.github/hooks/claude-mem.json` + `.vscode/mcp.json`):
+
+```bash
+npx claude-mem vscode-copilot install
+```
+
+Copilot hooks are a VS Code preview feature; reload the window after installing. Unlike Copilot CLI (search-only MCP), the VS Code integration captures observations through hooks.
+
 Or install from the plugin marketplace inside Claude Code:
 
 ```bash
